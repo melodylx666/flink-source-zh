@@ -30,6 +30,12 @@
  * 接收端的Netty Client收到数据后,进行decode操作,把数据拷贝到Buffer里,然后通知InputChannel;
  * 当InputChannel中有可用的数据时,下游算子从阻塞醒来,从InputChannel取出Buffer,再反序列化成Record,并将其交给算子执行相应的用户代码
 
+这里就是一个典型的生产者-消费者模式。
+
+上游taskmanager进程并发执行task，每个task产生任务数据之后，通过不同类型的ChannelSelector,决定向ResultPartition的不同resultSubPartition中写入。
+
+下游向上游请求数据，也就是通过Channel，创建subpartitionView，通过不同的模式，从上游对应的subpartition中获取数据。无数据时候会被阻塞。
+
 ### 数据传递源码
 
 首先,将数据流中的数据交给RecordWriter.

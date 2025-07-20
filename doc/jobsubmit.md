@@ -1,27 +1,24 @@
 ### 任务提交
 
-Flink是目前非常火的一款实时流式计算框架，阿里对其的加持也让它在国内成为最受欢迎的流式计算框架，这一方面是由于阿里双十一对其的应用使其经历过
-海量实时计算的场景考验，另一方面也表明了阿里在国内技术领域的话语权，另一个比较显著的例子是阿里提出的中台概念被众多的互联网公司借鉴，虽然我
-个人觉得除了数据中台等少数几个中台确有意义，其余大部分中台的概念可能都会水土不服，但是Flink这个框架确实有很多值得学习和研究的地方。
+数据中台的目的(或者说所有中台的目的)都是让数据(或其它资源)持续的使用起来，通过中台提供的工具、方法和运行机制，将数据(或其它)资源变成一种能力，让数据(或其它资源)能更方便的为业务所使用。
 
-额外的插一句话，数据中的目的(或者说所有中台的目的)都是让数据(或其它资源)持续的使用起来，通过中台提供的工具、方法和运行机制，将数据(或其它)
-资源变成一种能力，让数据(或其它资源)能更方便的为业务所使用。
+回到Flink，它实际上是Google Dataflow模型的一种实现，其设计与Dataflow模型高度贴合，感兴趣的话可以去研究一下Dataflow，对于理解Flink的设计非常有帮助。目前，Flink为了全面对标Spark从而构建属于自己的生态，加上正在和阿里内部使用的Flink版本也就是Blink进行合并，版本正在进行着快速的迭代升级，这在给我们不断带来新功能新特性的同时，也给使用它和分析其源码带来了不小的挑战。
 
-回到Flink，它实际上是Google Dataflow模型的一种实现，其设计与Dataflow模型高度贴合，感兴趣的话可以去研究一下Dataflow，对于理解Flink的
-设计非常有帮助。目前，Flink为了全面对标Spark从而构建属于自己的生态，加上正在和阿里内部使用的Flink版本也就是Blink进行合并，版本正在进行
-着快速的迭代升级，这在给我们不断带来新功能新特性的同时，也给使用它和分析其源码带来了不小的挑战。
-
-但是不管它的组件和代码怎么变，其基本组件模型不会变，任务的提交不会变，所以这里也就先从基本组件和任务的提交开始分析。Flink中的组件图及其交互
-如下图：
+但是不管它的组件和代码怎么变，其基本组件模型不会变，任务的提交不会变，所以这里也就先从基本组件和任务的提交开始分析。Flink中的组件图及其交互如下图：
 ![Flink组件](../images/flinkcomponent.png "Flink组件")
 
-需要注意的是，Flink中采用的是单进程多线程的执行方式(这与Spark的多进程的执行方式不太一样)，因此，当一个TaskManager上有多个Slot时，多个任
-务会共享同一个JVM的资源，比如TCP连接、心跳信息，甚至共享数据集、数据结构，这会降低每个任务的吞吐率。另外，如果某个task在运行时将整个work的
-内存占满，这个异常的任务可能会把整个TM进程kill掉，这样运行在之上的其他任务也都被kill掉了。当一个TaskManager上只有一个Slot时，每个任务就会
-在单独的JVM里执行，可达到应用程序独立部署、资源隔离的目的，防止异常的应用干扰其他无关的应用。因此，在Flink 1.7以后的版本中，一个TaskManager
-默认只会有一个Slot，如果需要设置多个需要手动修改该配置，从而达到任务间资源隔离的目的。
+需要注意的是，Flink中采用的是单进程多线程的执行方式(这与Spark的多进程的执行方式不太一样)，因此，当一个TaskManager上有多个Slot时，多个任务会共享同一个JVM的资源，比如TCP连接、心跳信息，甚至共享数据集、数据结构，这会降低每个任务的吞吐率。
 
-再来看一下Flink任务在被提交到Yarn上后会经过的处理流程,具体如下:
+另外，如果某个task在运行时将整个work的内存占满，这个异常的任务可能会把整个TM进程kill掉，这样运行在之上的其他任务也都被kill掉了。当一个TaskManager上只有一个Slot时，每个任务就会在单独的JVM里执行，可达到应用程序独立部署、资源隔离的目的，防止异常的应用干扰其他无关的应用。因此，在Flink 1.7以后的版本中，一个TaskManager默认只会有一个Slot，如果需要设置多个需要手动修改该配置，从而达到任务间资源隔离的目的。
+
+这里可以通过一个具体的例子来对比上述Flink和Spark的不同。
+
+假设有一个worker节点。
+
+- 对于Flink来说，一个Worker节点上运行一个TaskManager JVM进程，所有分发到本节点的subtask在TaskManager进程中通过线程并发运行。而Slot是一个TaskManager进程的资源的固定子集(只是托管内存均分并隔离，但是CPU不会隔离)，其数量等于TaskManager并发处理task的数量。如果一个TaskManager只有一个Slot，则每个task都运行在单独的JVM中，则完全隔离。而如果一个TaskManager有多个Slot，则多个task运行在同一个JVM中，共享资源，比如连接，数据集等。
+- 对于Spark来说，一个worker节点上运行一个worker进程，以及多个ExecutorBackend进程(彼此之间相互隔离，每个Executor都可以并发运行多个task)。具体数量是通过单个节点资源/单个executor资源来计算的。
+
+再来看一下Flink任务在被提交到Yarn上后会经过的处理流程(Flink job有session，Job，application三种执行模式，这里将其看做application模式),具体如下:
 
  ![Flink提交到yarn](../images/flinksubmittoyarn.png "Flink提交到yarn")
 
@@ -55,29 +52,9 @@ Flink是目前非常火的一款实时流式计算框架，阿里对其的加持
 
 StreamGraph生成的主要流程如下:
 
- * 用户对DataStream声明的每个操作都会将该操作对应的Transformation添加到Transformations列表:List
- * 用户程序中调用env.execute后(batch调用print方法类似),Flink将从List的Sink开始自底向上进行遍历,这也是为何Flink一定要写Sink的原因,没有Sink就无法生成StreamGraph.
- * 如果上游Transformation还没有进行处理,会先对上游的Transformation进行处理,处理即包装成一个StreamNode,再通过Edge建立上下游StreamNode的联系.
- * StreamGraphGenerator.generate()方法会最终生成一个完整的StreamGraph
-
- 其中,addSink的大致流程为:生成Operator -> 生成Transformation -> 加入Transformations中.具体操作如下:
-
- (1). 对用户函数进行序列化,并转化成Operator
- (2). clean进行闭包操作,如使用了哪些外部变量,会对所有字段进行遍历,并将它们的引用存储在闭包中
- (3). 完成Operator到SinkTransformation的转换,由DataStream和Operator共同构建一个SinkTransformation
- (4). 将SinkTransformation加入到transformations中
-
-其实Transformation包含许多种类型,除了上面的SinkTransformation,还有SourceTransformation,OneInputTransformation,TwoInputTransformaion,PartitionTransformaion,
-SelectTransformation等等.具体的使用场景如下:
-
- * PartitionTransformation:如果用户想要对DataStream进行keyby操作,得到一个KeyedStream,即需要对数据重新分区.首先,用户需要设置根据什么key进行
-   分区,即KeySelector.然后在生成KeyedStream的过程中,会得到一个PartitionTransformation.在PartitionTransformation中会对这条记录通过key进行计算,
-   判断应该发往下游哪个节点,KeyGroup可以由maxParallism进行调整.
- * TwoInputTransformaion:指包含两个输入流,如inputStream1和inputStream2,加上这个Transformation的输出,及Operator即可得到一个完整的TwoInputTransformation.
-
-以上过程得到了transformations的List,接下来就可以通过StreamGraphGenerator生成完整的StreamGraph.
-生成StreamGraph时会遍历Transformation树,逐个对Transformation进行转化,具体的转化由transform()方法完成.transform最终都会调用transformXXX对
-具体的StreamTransformation进行转换.transformPartition则是创建VirtualNode而不是StreamNode.
+1. 将用户编写到map，keyby等操作包装为Transformation,添加到Transformations列表中。
+2. 调用execute，则从sink开始将Transformation转换为StreamNode，同时建立上下游关系StreamEdge。
+3. 最终生成StreamGraph。
 
 
 ### Client
@@ -102,3 +79,12 @@ Operator能chain在一起的条件:
  6. 两个Operator间的数据分区方式是fowward
 
  7. 用户没有禁用chain
+
+
+针对CliFrontend，其会将命令行参数进行解析。如果命令行传参如下:
+
+```conf
+run -c org.apache.flink.streaming.examples.WordCount ./WordCount.jar
+```
+
+则启动CliFrontend的main方法之后，会检测到为run模式，并且执行的是./WordCount.jar，其入口类为org.apache.flink.streaming.examples.WordCount。然后就开始了向jobGraph的转换。

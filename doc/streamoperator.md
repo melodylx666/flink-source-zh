@@ -1,12 +1,22 @@
 StreamOperator
 -------------
+> https://melodylx666.github.io/lx-bigdata/Project/AbstractStreamOperatorDesign/
 
-StreamOperator是流式operators的基础接口，是任务执行过程中的实际处理类，其上层由StreamTask调用，下层调用用户所实现的具体方法，它的
-实现类在创建算子处理数据时是实现OneInputStreamOperator或TwoInputStreamOperator接口中的一种，分别表示处理一个输入、两个输入的Operator，
-在这两个接口中包含了processElement/processWatermark/processLatencyMarker方法。
 
-OneInputStreamOperator实现类StreamMap、WindowOperator、KeyedProcessOperator等单流处理Operator，TwoInputStreamOperator实现
-类CoStreamMap、KeyedCoProcessOperator、IntervalJoinOperator等多流处理Operator。StreamSource表示的source端的operator，既没有
+StreamOperator是流式operators的基础接口，是任务执行过程中的实际处理类，其上层由StreamTask调用，下层调用用户所实现的具体方法，它的实现类在创建算子处理数据时是实现OneInputStreamOperator或TwoInputStreamOperator接口中的一种，分别表示处理一个输入、两个输入的Operator，在这两个接口中包含了processElement/processWatermark/processLatencyMarker方法。
+
+OneInputStreamOperator实现类均为单流输入类：
+1. StreamMap
+2. WindowOperator
+3. KeyedProcessOperator等单流处理Operator，
+   
+TwoInputStreamOperator实现类均为双流输入类：
+1. CoStreamMap
+2. KeyedCoProcessOperator
+3. IntervalJoinOperator等多流处理Operator。
+
+
+StreamSource表示的source端的operator，既没有
 实现OneInputStreamOperator接口也没有实现TwoInputStreamOperator接口，因为其就是流处理的源头，不需要接受输入。
 
 AbstractStreamOperator是StreamOperator的基础抽象实现类，所有的operator都必须继承该抽象类，它为生命周期和属性方法提供了默认的实现。
@@ -23,7 +33,7 @@ StreamOperator继承的接口有：
  * Disposable接口，其中的dispose方法主要用于对象销毁和资源释放
  * Serializable序列化接口
 
- 列举一些常见的StreamOperator：
+ 列举一些常见的StreamOperator(一般通过dataStream.transform()传入的才是各种StreamOperator，下述是封装了一层的对应的各种Fucntion)
   * env.addSource对应StreamSource;
   * dataStream.map对应StreamMap;
   * dataStream.window对应WindowOperator;
@@ -41,9 +51,9 @@ AbstractStreamOperator和AbstractUdfStreamOperator
  定时器恢复初始化，对于keyedState来说会自动初始化恢复，但是operatorState则需要手动初始化恢复，所以在其继承的AbstractUdfStreamOperator会
  调用userFunction的initializedState方法，前提条件是该userFunction必须实现CheckpointedFunction接口;
 
- 2. open初始化方法，在AbstractStreamOperator中是一个空实现，通常可以在userFunction重写open方法完成一些用户初始化工作;
+ 1. open初始化方法，在AbstractStreamOperator中是一个空实现，通常可以在userFunction重写open方法完成一些用户初始化工作;
 
- 3. run方法(最新版本中是mailboxProcessor.runMailboxLoop()方法)，如果任务正常则一直会执行这个方法，根据收到的的不同数据类型调用AbstractStreamOperator的不同方法:
+ 2. run方法(最新版本中是mailboxProcessor.runMailboxLoop()方法)，如果任务正常则一直会执行这个方法，根据收到的的不同数据类型调用AbstractStreamOperator的不同方法:
 
    * 如果是watermark，会调用其processWatermark方法，做一些定时触发的判断与调用;
 
@@ -57,10 +67,10 @@ AbstractStreamOperator和AbstractUdfStreamOperator
    空的实现，然后调用snapshotState方法。在AbstractUdfStreamOperator中会调用userFunction的snapshotState方法，前提是该userFunction必须
    实现CheckpointedFunction接口;
 
- 4. close方法，任务正常结束调用的方法，在AbstractStreamOperator中是一个空的实现，通常可以在userFunction中重写close方法完成一些资源的
+ 3. close方法，任务正常结束调用的方法，在AbstractStreamOperator中是一个空的实现，通常可以在userFunction中重写close方法完成一些资源的
    释放;
 
- 5. dispose方法，任务正常结束或异常结束调用的方法，异常结束时会调用close方法，正常结束不会重复调用close方法，在其中完成一些状态最终资源的
+ 4. dispose方法，任务正常结束或异常结束调用的方法，异常结束时会调用close方法，正常结束不会重复调用close方法，在其中完成一些状态最终资源的
    释放;
 
 其它方法:
