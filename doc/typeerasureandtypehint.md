@@ -1,11 +1,12 @@
 ### Java泛型类型擦除和Flink类型暗示
 
-我们知道，泛型在实现中一般有两种方式：
-  * 代码共享：也就是对同一个原始类型下的泛型类型只生成同一份目标代码，此时就会出现类型擦除。比如Java中就采取了这种方式，它对List类型，不管
-  是List<String>，还是List<Integer>都只生成List.class这一份字节码;
+#### Flink序列化框架
 
-  * 代码特化：也就是对每一个泛型类型都生成不同的目标代码，如果是这种实现就不会出现类型擦除的问题，但是很明显的会出现代码膨胀的问题，C++就是
-  采取的这种方式;
+我们知道，泛型在实现中一般有两种方式：
+  * 代码共享：也就是对同一个原始类型下的泛型类型只生成同一份目标代码，此时就会出现类型擦除。比如Java中就采取了这种方式，它对`List`类型，不管
+  是`List<String>`，还是`List<Integer>`都只生成`List.class`这一份字节码;
+
+  * 代码特化：也就是对每一个泛型类型都生成不同的目标代码，如果是这种实现就不会出现类型擦除的问题，但是很明显的会出现代码膨胀的问题，C++就是采取的这种方式;
 
 Java泛型所使用的类型擦除虽然避免了代码膨胀的问题，节约了JVM的资源，但是却加重了编译器的工作量，使它不得不在运行期之前就进行类型检查，禁止模
 糊的或是不合法的泛型使用方式。当然了，在使用extends和super来对将来指向容器的参数类型做限制时，Java的类型擦除也会根据限制的最左侧的界限来
@@ -40,7 +41,7 @@ fold、mapPartition、AggregateFunction等多个方法获取其返回类型或�
   StreamExecutionEnvironment或者ExecutionEnvironment调用其getConfig().enableForceAvro();
 
   * 类型提示：尽管FLink提供的推断方法已经很多，但是由于上面介绍的的Java泛型类型擦除，自动提取类型的方式仍然并不总是有效，如果Flink尝试了
-  前述的各种办法仍然无法推断出泛型，用户就必须通过TypeHint来辅助进行推断，通过调用returns()方法声明返回类型。returns()方法接受三种类型的
+  前述的各种办法仍然无法推断出泛型，用户就必须通过TypeHint来辅助进行推断，通过调用`returns()`方法声明返回类型。returns()方法接受三种类型的
   参数：字符串描述的类名(如"String")、用于泛型类型的参数TypeHint、Java原生Class(例如String.class)等;
 
   * 手动创建TypeInformation：Flink提供的TypeInformation及其子类已经包含了很多常用类型的信息，但有时可能还是不够，所以手动创建有时是必须的，
@@ -50,3 +51,22 @@ fold、mapPartition、AggregateFunction等多个方法获取其返回类型或�
 
 从类型信息到内存块，需要经历以下步骤，这样数据才能被内存进行有效的管理，这也是Flink类型信息产生作用的过程：
 ![Flink类型信息到内存块](../images/typeinfotomemory.png "Flink类型信息到内存块")
+
+简单的话来总结上述图：
+对于如下类
+
+```java
+public class Order{
+  public int id;
+  public String name;
+  public double price;
+}
+```
+Flink需要迅速知道Order类中每个字段的类型信息，这样就可以分别找到对应类型的最快的序列化方式(不管这个流输出是int,String，还是double。如果输出是Order就找POJO类信息)。从而使得数据传输的速度达到最快。也就是说，根据Type Class，转换为对应的TypeInformation，便可以从而获取TypeSerializer，最终将对应数据进行序列化为二进制数据。
+
+#### Flink序列化场景
+
+1. subtask和subtask之间：上下游不同算子的subtask(StreamTask)传递数据，涉及到数据的序列化和反序列化。
+2. 单个subtask:状态数据，以及checkpoint数据的序列化和反序列化。
+3. 单个subtask内部的算子链的算子之间的数据传输。
+
